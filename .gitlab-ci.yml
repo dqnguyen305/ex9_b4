@@ -1,0 +1,35 @@
+stages:
+  - build
+  - dockerize
+
+build:
+  stage: build
+  image: maven:3.9-eclipse-temurin-17
+  script:
+    - mvn --batch-mode clean package -DskipTests
+  artifacts:
+    paths:
+      - target/*.jar
+    expire_in: 1 day
+
+dockerize:
+  stage: dockerize
+  image: docker:27-cli
+  services:
+    - name: docker:27-dind
+      alias: docker
+  variables:
+    DOCKER_HOST: tcp://docker:2376
+    DOCKER_TLS_CERTDIR: /certs
+    DOCKER_TLS_VERIFY: "1"
+    DOCKER_CERT_PATH: "$DOCKER_TLS_CERTDIR/client"
+  needs:
+    - job: build
+      artifacts: true
+  before_script:
+    - printf '%s' "$DOCKER_PASSWORD" | docker login --username "$DOCKER_USERNAME" --password-stdin
+  script:
+    - docker build -t "$DOCKER_USERNAME/my-microservice:$CI_COMMIT_SHORT_SHA" .
+    - docker push "$DOCKER_USERNAME/my-microservice:$CI_COMMIT_SHORT_SHA"
+    - docker tag "$DOCKER_USERNAME/my-microservice:$CI_COMMIT_SHORT_SHA" "$DOCKER_USERNAME/my-microservice:latest"
+    - docker push "$DOCKER_USERNAME/my-microservice:latest"
